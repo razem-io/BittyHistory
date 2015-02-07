@@ -42,9 +42,6 @@ public class BHistory {
         if(!mSymbolCsvFile.exists() || isOldData()) {
             download();
         }
-
-        //TODO: implement check if everything is valid
-        System.out.println("Data fetched or still fresh. We are all good!");
     }
 
     private boolean checkDirs(){
@@ -53,7 +50,7 @@ public class BHistory {
             return false;
         }
 
-        if(!mCsvPath.exists() && mCsvPath.mkdirs()){
+        if(!mCsvPath.exists() && !mCsvPath.mkdirs()){
             System.out.println("Could not create CSV folder.");
             return false;
         }
@@ -81,6 +78,8 @@ public class BHistory {
                         System.out.println("");
                         System.out.println("Download finished. Extracting csv...");
                         decompress();
+                        //TODO: implement check if everything is valid
+                        System.out.println("Data fetched or still fresh. We are all good!");
                     }
                 }
             });
