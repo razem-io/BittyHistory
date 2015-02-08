@@ -1,13 +1,17 @@
 package com.bitty.history;
 
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileOutputStream;
-import java.io.IOException;
+import com.google.common.base.Stopwatch;
+import org.mapdb.BTreeMap;
+import org.mapdb.DB;
+import org.mapdb.DBMaker;
+import org.supercsv.io.CsvBeanReader;
+import org.supercsv.io.ICsvBeanReader;
+import org.supercsv.prefs.CsvPreference;
+
+import java.io.*;
 import java.net.MalformedURLException;
 import java.net.URL;
-import java.util.Observable;
-import java.util.Observer;
+import java.util.*;
 import java.util.zip.GZIPInputStream;
 
 /**
@@ -19,7 +23,9 @@ public class BHistory {
     private static final String BITCOIN_CHARTS_BASE_URL = "http://api.bitcoincharts.com/v1/csv/";
     private static final String BITCOIN_CHARTS_BASE_EXT = ".csv.gz";
     private static final String BITCOIN_CHARTS_BASE_CSV = ".csv";
+
     private static final String CSV_PATH = "data/csv";
+    private static final String DB_PATH  = "data/db";
     private static final String TMP_PATH = "data/tmp";
 
     private static final Integer DATA_TIMEOUT_MS = 1000 * 60 * 15; // 15 minutes
@@ -29,18 +35,81 @@ public class BHistory {
     private File mSymbolCsvFile;
     private File mCsvPath;
     private File mTmpPath;
+    private File mDbPath;
+
+    private DB mDb;
+    private BTreeMap<Long, HistoryEntry> historyEntriesMap;
+
+    private List<BHistoryStatusListener> mStatusListenersList;
+
+    public interface BHistoryStatusListener{
+        public void onUpdate();
+        public void onFinish();
+        public void onError();
+    }
 
     public BHistory(String symbol) {
         mSymbol = symbol;
 
-        mTmpPath = new File(WORKING_DIR  + "/" + TMP_PATH + "/");
-        mCsvPath = new File(WORKING_DIR  + "/" + CSV_PATH + "/");
+        mTmpPath = new File(WORKING_DIR  + "/" + TMP_PATH);
+        mCsvPath = new File(WORKING_DIR  + "/" + CSV_PATH);
+        mDbPath  = new File(WORKING_DIR  + "/" + DB_PATH);
+
         mSymbolCsvFile = new File(mCsvPath.getAbsolutePath() + "/" + mSymbol + BITCOIN_CHARTS_BASE_CSV);
 
+        mStatusListenersList = new ArrayList<>();
+
+        initLevel1();
+    }
+
+    public void addStatusListener(BHistoryStatusListener listener){
+        mStatusListenersList.add(listener);
+    }
+
+    public void removeStatusListener(BHistoryStatusListener listener){
+        mStatusListenersList.remove(listener);
+    }
+
+    public Iterator<HistoryEntry> getHistoryEntries(){
+        return historyEntriesMap.values().iterator();
+    }
+
+    private void initLevel1(){
         checkDirs();
 
         if(!mSymbolCsvFile.exists() || isOldData()) {
             download();
+        }else{
+            initLevel2();
+        }
+    }
+
+    private void initLevel2(){
+        mDb = DBMaker.newTempFileDB().transactionDisable().closeOnJvmShutdown().make();
+
+        historyEntriesMap = mDb.createTreeMap("HistoryEntries").valueSerializer(new HistoryEntry.MapDbSerializer()).make();
+
+        readCSV();
+
+        mStatusListenersList.forEach(listener -> listener.onFinish());
+    }
+
+    private void readCSV() {
+        try (ICsvBeanReader inFile = new CsvBeanReader(new FileReader(mSymbolCsvFile), CsvPreference.STANDARD_PREFERENCE)) {
+            try {
+                String[] header = {"timestamp", "price", "amount"};
+                HistoryEntry historyEntry;
+                Stopwatch stopwatch = Stopwatch.createStarted();
+                while ((historyEntry = inFile.read(HistoryEntry.class, header, HistoryEntry.processors)) != null) {
+                    historyEntriesMap.put(historyEntry.getTimestamp(), historyEntry);
+                }                System.out.println("Size: " + historyEntriesMap.size() + " took: " + stopwatch);
+            } finally {
+                inFile.close();
+            }
+        } catch (FileNotFoundException e) {
+            e.printStackTrace();
+        } catch (IOException e) {
+            e.printStackTrace();
         }
     }
 
@@ -55,6 +124,10 @@ public class BHistory {
             return false;
         }
 
+        if(!mDbPath.exists() && !mDbPath.mkdirs()){
+            System.out.println("Could not create DB folder.");
+            return false;
+        }
         return true;
     }
 
@@ -79,7 +152,8 @@ public class BHistory {
                         System.out.println("Download finished. Extracting csv...");
                         decompress();
                         //TODO: implement check if everything is valid
-                        System.out.println("Data fetched or still fresh. We are all good!");
+                        System.out.println("Extracting complete.");
+                        initLevel2();
                     }
                 }
             });
