@@ -58,7 +58,9 @@ public class BHistory {
         mSymbolCsvFile = new File(mCsvPath.getAbsolutePath() + "/" + mSymbol + BITCOIN_CHARTS_BASE_CSV);
 
         mStatusListenersList = new ArrayList<>();
-
+    }
+    
+    public void execute(){
         initLevel1();
     }
 
@@ -70,8 +72,20 @@ public class BHistory {
         mStatusListenersList.remove(listener);
     }
 
-    public Iterator<HistoryEntry> getHistoryEntries(){
-        return historyEntriesMap.values().iterator();
+    public Collection<HistoryEntry> getHistoryEntries(){
+        return historyEntriesMap.values();
+    }
+    
+    
+    
+    public Date getFirstEntryDate(){
+        Long firstEntryTimestamp = historyEntriesMap.keySet().first();
+        return new Date(firstEntryTimestamp * 1000);
+    }
+
+    public Date getLastEntryDate(){
+        Long lastEntryTimestamp = historyEntriesMap.keySet().last();
+        return new Date(lastEntryTimestamp * 1000);
     }
 
     private void initLevel1(){
@@ -85,13 +99,15 @@ public class BHistory {
     }
 
     private void initLevel2(){
-        mDb = DBMaker.newTempFileDB().transactionDisable().closeOnJvmShutdown().make();
+        mDb = DBMaker.newFileDB(new File("data/db/" + mSymbol)).transactionDisable().asyncWriteEnable().closeOnJvmShutdown().make();
 
-        historyEntriesMap = mDb.createTreeMap("HistoryEntries").valueSerializer(new HistoryEntry.MapDbSerializer()).make();
+        historyEntriesMap = mDb.createTreeMap("HistoryEntries").valueSerializer(new HistoryEntry.MapDbSerializer()).makeOrGet();
 
-        readCSV();
+        if(historyEntriesMap.isEmpty()) {
+            readCSV();
+        }
 
-        mStatusListenersList.forEach(listener -> listener.onFinish());
+        mStatusListenersList.forEach(BHistoryStatusListener::onFinish);
     }
 
     private void readCSV() {
@@ -102,12 +118,12 @@ public class BHistory {
                 Stopwatch stopwatch = Stopwatch.createStarted();
                 while ((historyEntry = inFile.read(HistoryEntry.class, header, HistoryEntry.processors)) != null) {
                     historyEntriesMap.put(historyEntry.getTimestamp(), historyEntry);
-                }                System.out.println("Size: " + historyEntriesMap.size() + " took: " + stopwatch);
+                }                
+                System.out.println("Size: " + historyEntriesMap.size() + " took: " + stopwatch);
+                mDb.commit();
             } finally {
                 inFile.close();
             }
-        } catch (FileNotFoundException e) {
-            e.printStackTrace();
         } catch (IOException e) {
             e.printStackTrace();
         }
@@ -142,19 +158,16 @@ public class BHistory {
         try {
             URL website = new URL(BITCOIN_CHARTS_BASE_URL + mSymbol + BITCOIN_CHARTS_BASE_EXT);
             final Download download = new Download(website, TMP_PATH);
-            download.addObserver(new Observer() {
-                @Override
-                public void update(Observable o, Object arg) {
-                    System.out.print("\rDownloading: " + download.getProgress().intValue() + "%");
+            download.addObserver((o, arg) -> {
+                System.out.print("\rDownloading: " + download.getProgress().intValue() + "%");
 
-                    if(download.getStatus() == Download.COMPLETE){
-                        System.out.println("");
-                        System.out.println("Download finished. Extracting csv...");
-                        decompress();
-                        //TODO: implement check if everything is valid
-                        System.out.println("Extracting complete.");
-                        initLevel2();
-                    }
+                if(download.getStatus() == Download.COMPLETE){
+                    System.out.println("");
+                    System.out.println("Download finished. Extracting csv...");
+                    decompress();
+                    //TODO: implement check if everything is valid
+                    System.out.println("Extracting complete.");
+                    initLevel2();
                 }
             });
 
