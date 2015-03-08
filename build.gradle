@@ -8,7 +8,7 @@ repositories {
 }
 
 dependencies {
-    compile 'org.mapdb:mapdb:1.0.6'
+    compile 'org.mapdb:mapdb:1.0.7'
     compile 'net.sf.supercsv:super-csv:2.2.1'
     compile 'com.esotericsoftware:kryo:3.0.0'
     compile 'com.google.guava:guava:18.0'
