@@ -1,4 +1,4 @@
-package com.bitty.history;
+package io.razem.bitty.history;
 
 import com.google.common.base.Stopwatch;
 import org.mapdb.BTreeMap;
@@ -91,7 +91,7 @@ public class BHistory {
     private void initLevel1(){
         checkDirs();
 
-        if(!mSymbolCsvFile.exists() || isOldData()) {
+        if(!mSymbolCsvFile.exists()) {
             download();
         }else{
             initLevel2();
@@ -99,7 +99,11 @@ public class BHistory {
     }
 
     private void initLevel2(){
-        mDb = DBMaker.newFileDB(new File("data/db/" + mSymbol)).transactionDisable().asyncWriteEnable().closeOnJvmShutdown().make();
+        mDb = DBMaker.newFileDB(new File("data/db/" + mSymbol))
+                .transactionDisable()
+                .mmapFileEnableIfSupported()
+                .closeOnJvmShutdown()
+                .make();
 
         historyEntriesMap = mDb.createTreeMap("HistoryEntries").valueSerializer(new HistoryEntry.MapDbSerializer()).makeOrGet();
 

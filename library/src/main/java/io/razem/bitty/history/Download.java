@@ -1,4 +1,4 @@
-package com.bitty.history;
+package io.razem.bitty.history;
 
 import java.io.*;
 import java.net.*;

@@ -1,4 +1,4 @@
-package com.bitty.history;
+package io.razem.bitty.history;
 
 import org.mapdb.Serializer;
 import org.supercsv.cellprocessor.ParseDouble;
@@ -34,7 +34,7 @@ public class HistoryEntry implements Comparable<HistoryEntry> {
     }
 
     public Long getTimestamp() {
-        return timestamp;
+        return timestamp * 1000;
     }
 
     public void setTimestamp(Long timestamp) {

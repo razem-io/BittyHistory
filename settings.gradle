@@ -1,2 +1,6 @@
 rootProject.name = 'BittyHistory'
 
+include 'examples'
+
+include 'library'
+
